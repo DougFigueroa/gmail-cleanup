@@ -1,12 +1,13 @@
 from ctypes import create_unicode_buffer
+from tracemalloc import start
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
+from datetime import datetime, time
 import os.path
 import base64
-import email
 from bs4 import BeautifulSoup
 
 
@@ -34,29 +35,61 @@ def get_credentials():
     return credentials
 
 
-def get_emails(credentials):
+def get_emails(service, next_page=None):
     """Call the google api and get all the emails
     """
     results = None
     try:
-        service = build('gmail', 'v1', credentials=credentials)
-        results = service.users().messages().list(userId='me').execute()
+        results = service.users().messages().list(userId='me', pageToken=next_page).execute()
+        emails = results.get('messages')
+        next_page_token = results.get('nextPageToken')
     except HttpError as error:
-        print(f'An error occured while getting emails: {error}')
-    return results
+        print(f'An error occured while getting the email list: {error}')
+    return emails, next_page_token
 
 
-def delete_emails():
+def get_email_content(service, email_id):
+    if not email_id:
+        return None
+    try:
+        email_info = service.users().messages().get(userId='me', id=email_id).execute()
+    except HttpError as error:
+        print(f'An error occured whle getting the email info: {error}')
+    return email_info
+
+
+def delete_email():
     return
 
 
 def handler():
+    start_time = datetime.now()
     print('>> Starting the cleaning process...')
     # if not valid token, we will create a new one.
-    credentials = get_credentials()
-    email_batch = get_emails(credentials)
-    print(email_batch)
-    print('>> Cleaning complete. Enjoy :)')
+    # create the service handler object to access the api
+    service = build('gmail', 'v1', credentials=get_credentials())
+    next_page_token = None
+    while True:
+        email_batch, next_page_token = get_emails(service, next_page=next_page_token)
+        for email in email_batch:
+            email_info = get_email_content(service, email.get('id'))
+            payload = email_info.get('payload')
+            headers = payload.get('headers')
+            body = payload.get('body')
+            # extract the headers that we need, in this case Subject and From
+            for h in headers:
+                if h.get('name') == 'Subject':
+                    subject = h.get('value')
+                if h.get('name') == 'From':
+                    sender = h.get('value') 
+            
+            print(f'\n Email headers: {subject} {sender}')
+            #print(body)
+        if not next_page_token:
+            break
+    end_time = datetime.now()
+    duration = end_time - start_time
+    print(f'>> Cleaning complete. Duration: {duration}. \n>> Hope you inbox is cleaner :)')
 
 
 if __name__ == '__main__':
