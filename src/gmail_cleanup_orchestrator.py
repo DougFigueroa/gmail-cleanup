@@ -72,23 +72,23 @@ def send_to_trash(service, email_id):
 
 def handler():
     # this will be the words or queries to filter the search
-    query = 'from:noreply@glassdoor.com'
+    query = 'from:Twitter'
     start_time = datetime.now()
     print('>> Starting the cleaning process...')
     # if not valid token, we will create a new one.
     # create the service handler object to access the api
     service = build('gmail', 'v1', credentials=get_credentials())
     next_page_token = None
+    print(f'> Cleaning emails base on the filter-> {query}')
     while True:
         email_batch, next_page_token = get_emails(service, query=query, next_page=next_page_token)
+        # send every email that meets the filter to trash
+        if email_batch:
+            for email in email_batch:
+                result = send_to_trash(service, email.get('id'))
+                # print(f'Email sent it to trash: {result}')
         if not next_page_token:
             break
-        # send every email that meets the filter to trash
-        for email in email_batch:
-            result = send_to_trash(service, email.get('id'))
-            print(f'Email sent it to trash. Snippet: {result}')
-
-
         # Use this section if you want list all the inbox and start reviewing email per email body and headers
         # for email in email_batch:
         #     email_info = get_email_content(service, email.get('id'))
