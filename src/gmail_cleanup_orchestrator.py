@@ -1,5 +1,3 @@
-from ctypes import create_unicode_buffer
-from tracemalloc import start
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -7,13 +5,18 @@ from google.auth.transport.requests import Request
 from googleapiclient.errors import HttpError
 from datetime import datetime
 import os.path
-import base64
-from bs4 import BeautifulSoup
+import configparser
 
 
 # define the scope of the API IF MODIFY IT, DELETE THE FILE token.json
 SCOPES = ['https://mail.google.com/', 'https://www.googleapis.com/auth/gmail.readonly']  # this grants full access (read, delete, trash)
 # SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # use this if you want to only read messages
+
+
+def read_config(file_path):
+    parser = configparser.ConfigParser()
+    parser.read(file_path)
+    return parser
 
 
 def get_credentials():
@@ -72,41 +75,47 @@ def send_to_trash(service, email_id):
 
 def handler():
     # this will be the words or queries to filter the search
-    query = 'from:Twitter'
+    current_dir = os.path.dirname(__file__)
+    config_file_path = os.path.join(current_dir, 'cfg', 'emails_to_filter.cfg')
+    config = read_config(config_file_path)
+    query_filters = config.get('email_filters', 'filter')
+    # query = 'from:Amazon.com'
     start_time = datetime.now()
     print('>> Starting the cleaning process...')
     # if not valid token, we will create a new one.
     # create the service handler object to access the api
     service = build('gmail', 'v1', credentials=get_credentials())
-    next_page_token = None
-    print(f'> Cleaning emails base on the filter-> {query}')
-    while True:
-        email_batch, next_page_token = get_emails(service, query=query, next_page=next_page_token)
-        # send every email that meets the filter to trash
-        if email_batch:
-            for email in email_batch:
-                result = send_to_trash(service, email.get('id'))
-                # print(f'Email sent it to trash: {result}')
-        if not next_page_token:
-            break
-        # Use this section if you want list all the inbox and start reviewing email per email body and headers
-        # for email in email_batch:
-        #     email_info = get_email_content(service, email.get('id'))
-        #     payload = email_info.get('payload')
-        #     headers = payload.get('headers')
-        #     body = base64.b64decode(payload.get('body').get('data').replace('-','+').replace('_','/'))
-        #     # extract the headers that we need, in this case Subject and From
-        #     for h in headers:
-        #         if h.get('name') == 'Subject':
-        #             subject = h.get('value')
-        #         if h.get('name') == 'From':
-        #             sender = h.get('value') 
-        #     if 'quora' in subject.lower():
-        #         # to do
-        #       print(f'\n Email headers: {subject} |  {sender}')
-        #       # get the lxml email body converted
-        #       soup = BeautifulSoup(body, 'lxml')
-        #       body_formatted = soup.body()
+    # start looping all of the filters
+    for query in query_filters.split(','):
+        next_page_token = None
+        print(f'> Cleaning emails based on the filter-> {query}')
+        while True:
+            email_batch, next_page_token = get_emails(service, query=query, next_page=next_page_token)
+            # send every email that meets the filter to trash
+            if email_batch:
+                for email in email_batch:
+                    _result = send_to_trash(service, email.get('id'))
+                    # print(f'Email sent it to trash: {result}')
+            if not next_page_token:
+                break
+            # Use this section if you want list all the inbox and start reviewing email per email body and headers
+            # for email in email_batch:
+            #     email_info = get_email_content(service, email.get('id'))
+            #     payload = email_info.get('payload')
+            #     headers = payload.get('headers')
+            #     body = base64.b64decode(payload.get('body').get('data').replace('-','+').replace('_','/'))
+            #     # extract the headers that we need, in this case Subject and From
+            #     for h in headers:
+            #         if h.get('name') == 'Subject':
+            #             subject = h.get('value')
+            #         if h.get('name') == 'From':
+            #             sender = h.get('value') 
+            #     if 'quora' in subject.lower():
+            #         # to do
+            #       print(f'\n Email headers: {subject} |  {sender}')
+            #       # get the lxml email body converted
+            #       soup = BeautifulSoup(body, 'lxml')
+            #       body_formatted = soup.body()
     end_time = datetime.now()
     duration = end_time - start_time
     print(f'>> Cleaning complete. Duration: {duration}. \n>> Hope you inbox is cleaner :)')
